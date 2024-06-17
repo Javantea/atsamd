@@ -13,12 +13,15 @@ use ws2812_timer_delay as ws2812;
 
 use hal::ehal::digital::v1_compat::OldOutputPin;
 
+use accelerometer::Accelerometer;
 use bsp::entry;
-use hal::adxl343::accelerometer::Accelerometer;
 use hal::pac::{CorePeripherals, Peripherals};
 use hal::prelude::*;
-use hal::timer::SpinTimer;
+use hal::timer::TimerCounter;
 use hal::{clock::GenericClockController, delay::Delay};
+use bsp::i2c_master;
+use adxl343::Adxl343;
+use hal::time::MegaHertz;
 
 use smart_leds::{hsv::RGB8, SmartLedsWrite};
 
@@ -34,34 +37,31 @@ fn main() -> ! {
         &mut peripherals.OSCCTRL,
         &mut peripherals.NVMCTRL,
     );
+    let gclk0 = clocks.gclk0();
+    let tc2_3 = clocks.tc2_tc3(&gclk0).unwrap();
+    let mut timer = TimerCounter::tc3_(&tc2_3, peripherals.TC3, &mut peripherals.MCLK);
+    timer.start(MegaHertz(4));
 
     let mut delay = Delay::new(core_peripherals.SYST, &mut clocks);
-    let mut pins = bsp::Pins::new(peripherals.PORT).split();
+    let mut pins = bsp::Pins::new(peripherals.PORT);
 
     // neopixels
-    let timer = SpinTimer::new(4);
-    let neopixel_pin: OldOutputPin<_> = pins.neopixel.into_push_pull_output(&mut pins.port).into();
+    let neopixel_pin = pins.neopixel.into_push_pull_output();
     let mut neopixels = ws2812::Ws2812::new(timer, neopixel_pin);
 
     // accelerometer
-    let mut adxl343 = pins
-        .accel
-        .open(
-            &mut clocks,
-            peripherals.SERCOM2,
-            &mut peripherals.MCLK,
-            &mut pins.port,
-        )
-        .unwrap();
+    let mut adxl343 = Adxl343::new(i2c_master(&mut clocks, 100.khz(), peripherals.SERCOM2, &mut peripherals.MCLK, pins.sda, pins.scl)).unwrap();
 
     loop {
-        let ax3 = adxl343.acceleration().unwrap();
+        let ax3 = adxl343.accel_norm().unwrap();
+        //let vv:Accelerometer = adxl343;
+        //let ax3 = vv.accel_norm().unwrap();
 
         // RGB indicators of current accelerometer state
         let colors = [
-            RGB8::from(((ax3.x >> 8 & 0b11000000) as u8, 0, 0)),
-            RGB8::from((0, (ax3.y >> 8 & 0b11000000) as u8, 0)),
-            RGB8::from((0, 0, (ax3.x >> 8 & 0b11000000) as u8)),
+            RGB8::from(((ax3.x * 13.) as u8, 0, 0)),
+            RGB8::from((0, (ax3.y * 13.) as u8, 0)),
+            RGB8::from((0, 0, (ax3.x * 13.) as u8)),
         ];
 
         neopixels.write(colors.iter().cloned()).unwrap();

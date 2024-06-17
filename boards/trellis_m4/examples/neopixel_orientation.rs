@@ -11,15 +11,27 @@ use panic_semihosting as _;
 use trellis_m4 as bsp;
 use ws2812_timer_delay as ws2812;
 
-use hal::ehal::digital::v1_compat::OldOutputPin;
+//use hal::ehal::digital::v1_compat::OldOutputPin;
 
 use bsp::entry;
-use hal::adxl343::accelerometer::Orientation;
-use hal::pac::{CorePeripherals, Peripherals};
+use adxl343::accelerometer::Orientation;
+use accelerometer::Accelerometer;
+
+use hal::pac::{interrupt, CorePeripherals, Peripherals};
 use hal::prelude::*;
-use hal::timer::SpinTimer;
+//use hal::timer::SpinTimer;
+use hal::timer::TimerCounter;
 use hal::{clock::GenericClockController, delay::Delay};
 use smart_leds::{colors, hsv::RGB8, SmartLedsWrite};
+use accelerometer::orientation::Tracker;
+use hal::time::MegaHertz;
+use adxl343::Adxl343;
+use bsp::i2c_master;
+
+// USB
+//use cortex_m::peripheral::NVIC;
+//use usb_device::{bus::UsbBusAllocator, prelude::*};
+//use usbd_serial::{SerialPort, USB_CLASS_CDC};
 
 #[entry]
 fn main() -> ! {
@@ -35,38 +47,49 @@ fn main() -> ! {
     );
 
     let mut delay = Delay::new(core_peripherals.SYST, &mut clocks);
-    let mut pins = bsp::Pins::new(peripherals.PORT).split();
+    let mut pins = bsp::Pins::new(peripherals.PORT);
 
     // neopixels
-    let timer = SpinTimer::new(4);
-    let neopixel_pin: OldOutputPin<_> = pins.neopixel.into_push_pull_output(&mut pins.port).into();
+    let gclk0 = clocks.gclk0();
+    let tc2_3 = clocks.tc2_tc3(&gclk0).unwrap();
+    let mut timer = TimerCounter::tc3_(&tc2_3, peripherals.TC3, &mut peripherals.MCLK);
+    timer.start(MegaHertz(4));
+    //let neopixel_pin: OldOutputPin<_> = pins.neopixel.into_push_pull_output(&mut pins.port).into();
+    let neopixel_pin = pins.neopixel.into_push_pull_output();
     let mut neopixels = ws2812::Ws2812::new(timer, neopixel_pin);
 
-    // accelerometer
-    let adxl343 = pins
-        .accel
-        .open(
-            &mut clocks,
-            peripherals.SERCOM2,
-            &mut peripherals.MCLK,
-            &mut pins.port,
-        )
-        .unwrap();
-
-    let mut accel_tracker = adxl343.try_into_tracker().unwrap();
+    let mut adxl343 = Adxl343::new(i2c_master(&mut clocks, 100.khz(), peripherals.SERCOM2, &mut peripherals.MCLK, pins.sda, pins.scl)).unwrap();
+    let mut accel_tracker:Tracker = Tracker::new(1.8);
+    accel_tracker.update(adxl343.accel_norm().unwrap());
 
     loop {
         // update tracker's internal `last_orientation`
-        accel_tracker.orientation().unwrap();
+        accel_tracker.update(adxl343.accel_norm().unwrap());
+        hal::dbgprint!("test123\n");
         neopixels
             .write(
-                colors_for_orientation(accel_tracker.last_orientation())
+                colors_for_orientation(accel_tracker.orientation())
                     .iter()
                     .cloned(),
             )
             .unwrap();
         delay.delay_ms(10u8);
     }
+    /*
+    let v:Orientation = Orientation::PortraitUp;
+
+    loop {
+        hal::dbgprint!("test123\n");
+        neopixels
+            .write(
+                colors_for_orientation(v)
+                    .iter()
+                    .cloned(),
+            )
+            .unwrap();
+        delay.delay_ms(10u8);
+    }
+    */
 }
 
 fn colors_for_orientation(orientation: Orientation) -> [RGB8; bsp::NEOPIXEL_COUNT] {
