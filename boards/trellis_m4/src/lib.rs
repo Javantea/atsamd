@@ -27,6 +27,17 @@ use hal::usb::usb_device::bus::UsbBusAllocator;
 #[cfg(feature = "usb")]
 pub use hal::usb::UsbBus;
 
+#[cfg(feature = "keypad-unproven")]
+pub use keypad;
+use core::convert::Infallible;
+
+//#[cfg(feature = "keypad-unproven")]
+//use hal::ehal::digital::v1_compat::{OldInputPin, OldOutputPin};
+//#[cfg(feature = "keypad-unproven")]
+//use hal::gpio::{OpenDrain, Output, PullUp};
+#[cfg(feature = "keypad-unproven")]
+use keypad::{keypad_new, keypad_struct};
+
 /// Number of Neopixels on the device
 pub const NEOPIXEL_COUNT: usize = 32;
 
@@ -92,6 +103,7 @@ hal::bsp_pins!(
         name: d0_rx
         aliases: {
             AlternateD: UartRx
+            PushPullOutput: Col2
         }
     }
     PA17 {
@@ -101,6 +113,7 @@ hal::bsp_pins!(
         name: d1_tx
         aliases: {
             AlternateD: UartTx
+            PushPullOutput: Col3
         }
     }
     PA07 {
@@ -112,41 +125,64 @@ hal::bsp_pins!(
         name: d3
         aliases: {
             AlternateC: UndocIoset2Pad2
+            PullUpInput: Row2
         }
     }
     PA14 {
         /// pin 4, PWM capable
         name: d4
+        aliases: {
+            PushPullOutput: Col0
+        }
     }
     PA15 {
         /// pin 5. Output-only with rail-to-rail HI level. PWM capable.
         name: d5
+        aliases: {
+            PushPullOutput: Col1
+        }
     }
     PA18 {
         /// pin 7, PWM capable
         name: d7
+        aliases: {
+            PullUpInput: Row0
+        }
     }
     PA19 {
         /// pin 9, PWM capable
         name: d9
+        aliases: {
+            PullUpInput: Row1
+        }
     }
     PA20 {
         /// pin 10, PWM capable
         name: d10
+        aliases: {
+            PushPullOutput: Col4
+        }
     }
     PA21 {
         /// pin 11, PWM capable
         name: d11
+        aliases: {
+            PushPullOutput: Col5
+        }
     }
     PA23 {
         /// pin 12, PWM capable
         name: d12
+        aliases: {
+            PushPullOutput: Col7
+        }
     }
     PA22 {
         /// pin 13, connected to builtin red led, PWM capable
         name: d13
         aliases: {
             PushPullOutput: BuiltinLed
+            PushPullOutput: Col6
         }
     }
     PA00 {
@@ -168,6 +204,7 @@ hal::bsp_pins!(
         name: miso
         aliases: {
             AlternateC:  Miso
+            PullUpInput: Row3
         }
     }
     PB02 {
@@ -188,7 +225,8 @@ hal::bsp_pins!(
         /// Neopixels
         name: neopixel
         aliases: {
-           PullUpInput: Neopixel
+           //PullUpInput: Neopixel
+           PushPullOutput: Neopixel
         }
     }
     PA12 {
@@ -397,4 +435,54 @@ pub fn spi_master(
         .baud(baud)
         .spi_mode(spi::MODE_0)
         .enable()
+}
+
+
+#[cfg(feature = "keypad-unproven")]
+keypad_struct! {
+    #[doc="NeoTrellis M4 Express 8x4 keypad"]
+    pub struct Keypad <Error = Infallible> {
+        rows: (
+            Row0,
+            Row1,
+            Row2,
+            Row3, //OldInputPin<gpio::Pb23<Input<PullUp>>>,
+        ),
+        columns: (
+            Col0,
+            Col1,
+            Col2,
+            Col3,
+            Col4,
+            Col5,
+            Col6,
+            Col7, //OldOutputPin<gpio::Pa23<Output<OpenDrain>>>,
+        ),
+    }
+}
+
+#[cfg(feature = "keypad-unproven")]
+impl Pins {
+    /// Create a new Keypad from the given pins
+    pub fn split(self) -> (Keypad, Neopixel) {
+        (keypad_new!(Keypad {
+            rows: (
+                self.d7.into_pull_up_input(),
+                self.d9.into_pull_up_input(),
+                self.d3.into_pull_up_input(),
+                self.miso.into_pull_up_input(),
+            ),
+            columns: (
+                self.d4.into_push_pull_output(),
+                self.d5.into_push_pull_output(),
+                self.d0_rx.into_push_pull_output(),
+                self.d1_tx.into_push_pull_output(),
+                self.d10.into_push_pull_output(),
+                self.d11.into_push_pull_output(),
+                self.d13.into_push_pull_output(),
+                self.d12.into_push_pull_output(),
+            ),
+        }),
+         self.neopixel.into_push_pull_output())
+    }
 }

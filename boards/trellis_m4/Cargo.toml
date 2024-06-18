@@ -40,7 +40,7 @@ version = "0.2"
 #optional = true
 
 [dependencies.keypad]
-version = "0.1"
+version = "0.2.2"
 optional = true
 
 [dev-dependencies]
@@ -55,7 +55,7 @@ version = "0.3"
 
 [features]
 # ask the HAL to enable atsamd51g support
-default = ["rt", "atsamd-hal/samd51g", "usb", "adxl343"]
+default = ["rt", "atsamd-hal/samd51g", "usb", "adxl343", "keypad-unproven"]
 rt = ["cortex-m-rt", "atsamd-hal/samd51g-rt"]
 unproven = ["atsamd-hal/unproven"]
 keypad-unproven = ["keypad", "unproven"]

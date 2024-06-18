@@ -9,13 +9,12 @@ use panic_semihosting as _;
 use trellis_m4 as bsp;
 use ws2812_timer_delay as ws2812;
 
-use hal::ehal::digital::v1_compat::OldOutputPin;
-
 use bsp::entry;
 use hal::pac::{CorePeripherals, Peripherals};
 use hal::prelude::*;
-use hal::timer::SpinTimer;
+use hal::timer::TimerCounter;
 use hal::{clock::GenericClockController, delay::Delay};
+use hal::time::MegaHertz;
 
 use smart_leds::{brightness, colors, hsv::RGB8, SmartLedsWrite};
 
@@ -31,11 +30,14 @@ fn main() -> ! {
         &mut peripherals.OSCCTRL,
         &mut peripherals.NVMCTRL,
     );
+    let gclk0 = clocks.gclk0();
+    let tc2_3 = clocks.tc2_tc3(&gclk0).unwrap();
+    let mut timer = TimerCounter::tc3_(&tc2_3, peripherals.TC3, &mut peripherals.MCLK);
+    timer.start(MegaHertz(4));
 
     let mut pins = bsp::Pins::new(peripherals.PORT);
     let mut delay = Delay::new(core_peripherals.SYST, &mut clocks);
-    let timer = SpinTimer::new(4);
-    let neopixel_pin: OldOutputPin<_> = pins.neopixel.into_push_pull_output(&mut pins.port).into();
+    let neopixel_pin = pins.neopixel.into_push_pull_output();
     let mut neopixel = ws2812::Ws2812::new(timer, neopixel_pin);
 
     loop {

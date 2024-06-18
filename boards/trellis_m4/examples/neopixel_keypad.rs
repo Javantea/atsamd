@@ -9,14 +9,14 @@ use panic_semihosting as _;
 use trellis_m4 as bsp;
 use ws2812_timer_delay as ws2812;
 
-use hal::ehal::digital::v1_compat::OldOutputPin;
-use hal::ehal::digital::v2::InputPin;
+//use hal::ehal::digital::v2::InputPin;
 
 use bsp::entry;
 use hal::pac::{CorePeripherals, Peripherals};
 use hal::prelude::*;
-use hal::timer::SpinTimer;
+use hal::timer::TimerCounter;
 use hal::{clock::GenericClockController, delay::Delay};
+use hal::time::MegaHertz;
 
 use smart_leds::{
     brightness, colors,
@@ -37,19 +37,22 @@ fn main() -> ! {
         &mut peripherals.OSCCTRL,
         &mut peripherals.NVMCTRL,
     );
+    let gclk0 = clocks.gclk0();
+    let tc2_3 = clocks.tc2_tc3(&gclk0).unwrap();
+    let mut timer = TimerCounter::tc3_(&tc2_3, peripherals.TC3, &mut peripherals.MCLK);
+    timer.start(MegaHertz(4));
 
     let mut delay = Delay::new(core_peripherals.SYST, &mut clocks);
 
-    let mut pins = bsp::Pins::new(peripherals.PORT).split();
+    let mut pins = bsp::Pins::new(peripherals.PORT);
 
     // neopixels
-    let timer = SpinTimer::new(4);
-    let neopixel_pin: OldOutputPin<_> = pins.neopixel.into_push_pull_output(&mut pins.port).into();
+    let (keypad, neopixel_pin) = pins.split();
+    //let neopixel_pin = pins.neopixel.into_push_pull_output();
     let mut neopixel = ws2812::Ws2812::new(timer, neopixel_pin);
     let mut color_values = [RGB8::default(); bsp::NEOPIXEL_COUNT];
 
     // keypad
-    let keypad = bsp::Keypad::new(pins.keypad, &mut pins.port);
     let keypad_inputs = keypad.decompose();
     let mut keypad_state = [false; bsp::NEOPIXEL_COUNT];
     let mut toggle_values = [false; bsp::NEOPIXEL_COUNT];
@@ -59,7 +62,7 @@ fn main() -> ! {
             for (i, value) in color_values.iter_mut().enumerate() {
                 let keypad_column = i % 8;
                 let keypad_row = i / 8;
-                let keypad_button: &dyn InputPin<Error = ()> =
+                let keypad_button =
                     &keypad_inputs[keypad_row][keypad_column];
 
                 if keypad_button.is_high().unwrap() {
